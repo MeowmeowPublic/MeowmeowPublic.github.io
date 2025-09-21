@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>馬兒蹦蹦</title>
+<style>
+  :root{
+    --bg:#b3a695;
+    --timer-border:#7a0011;   /* 光線主色 */
+    --circle:#c2dcf3;
+    --circle-edge:#CCFAFB;
+    --beam:var(--timer-border);
+    --ui-green:#75c081;
+    --ui-orange:#ED885C;    
+    --text:#000;
+
+    /* 控制邊線寬度（勾選框邊線=4px），光線描邊跟此值走 */
+    --ctrl-border: 4px;
+    --beam-edge-w: calc(var(--ctrl-border) * 5);
+    --beam-edge: #EF3A24; /* 稍亮紅，作為描邊色 */
+  }
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC","PingFang TC","Heiti TC","Microsoft JhengHei",Arial,sans-serif;
+    user-select:none;overflow:hidden;
+  }
+  #game{position:relative;width:100vw;height:100vh}
+
+  /* 控制列定位 */
+  .ctrlRow{position:absolute;left:16px;width:min(36rem,34vw);z-index:5;}
+  #langBox { top:16px; }
+  #speedBox{ top:74px; }
+  #allyBox { top:132px; }
+  #rndBox  { top:190px; }
+  #scoreBox{ top:248px; display:none;}
+
+  .ctrlGrid{display:grid;grid-template-columns:10.5rem 1fr;align-items:center;gap:14px;}
+  .label{line-height:1.15;white-space:nowrap;}
+  .cellR{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+
+  /* 語言列：文字在前、方框在後；間距：文字→8px→框→48px→下一組 */
+  #langRow{display:flex;align-items:center;flex-wrap:wrap;}
+  .langOpt{display:flex;align-items:center;}
+  .langText{margin-right:8px;white-space:nowrap;}
+  .langInput{margin-right:48px;}
+  .langOpt:last-child .langInput{margin-right:0;}
+
+  /* 滑桿 */
+  input[type="range"]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;cursor:pointer;}
+  input[type="range"]::-webkit-slider-runnable-track{height:6px;background:var(--ui-orange);border-radius:6px;}
+  input[type="range"]::-moz-range-track{height:6px;background:var(--ui-orange);border-radius:6px;}
+  input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid #000;margin-top:-6px;}
+  input[type="range"]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid #000;}
+
+  /* 勾選框/單選框外觀（語言/隨機延遲共用）：藍邊 + 黑色 V */
+  .chk{-webkit-appearance:none;appearance:none;width:26px;height:26px;border:var(--ctrl-border) solid var(--ui-green);border-radius:4px;background:transparent;cursor:pointer;position:relative;overflow:visible;}
+  .chk:checked::after{content:"";position:absolute;left:6px;top:-13px;width:10px;height:22px;border-right:4px solid #000;border-bottom:4px solid #000;transform:rotate(45deg);}
+
+  /* 隨機延遲：向左 20px，與標題垂直置中 */
+  #rndBox .cellR{align-items:center;}
+  #rndChk{ transform: translate(80px, 1px); }
+
+  .ctrlRow.disabled{opacity:.45;filter:grayscale(.3);pointer-events:none;}
+
+  /* 中上：計時／結果／Start/Retry/馬（共用槽位） */
+  #centerPanel{position:absolute;top:16px;left:50%;transform:translateX(-50%);width:min(26rem,40vw);text-align:center;z-index:4;overflow:visible;}
+  #timerTop{display:none;font-size:clamp(12px,1.6vw,18px);margin-bottom:6px;}
+  #resultMsg{display:none;font-size:clamp(28px,3.6vw,48px);font-weight:800;line-height:1.1;margin:8px 0;}
+  #ctaSlot{position:relative;width:100%;height:min(5rem,8vh);display:flex;align-items:center;justify-content:center;}
+  #startBtn{width:100%;height:100%;border:4px solid transparent;border-radius:.6rem;border-image: linear-gradient(135deg,#75c081,#ED885C) 3;background:transparent;font-size:clamp(16px,1.8vw,22px);cursor:pointer;border-radius:.6rem;}
+  #startBtn:active{transform:scale(0.98);}
+  #horseMark{display:none;width:100%;height:100%;font-size:clamp(56px,1.8vw,62px);color:#000;align-items:center;justify-content:center;}
+
+  /* 右上：三語說明（依語言切換） */
+  .helpBox{position:absolute;top:16px;right:16px;width:min(28rem,33vw);z-index:3;font-size:clamp(12px,1.35vw,16px);line-height:1.35;}
+  .helpBox h3{margin:0 0 .25em 0;font-size:1em;letter-spacing:.02em;}
+  .helpBox p{margin:.35em 0;}
+  .helpBox, .helpBox * { -webkit-user-select:text; user-select:text; }
+  .helpBox a{color:#0645AD;text-decoration:underline;} .helpBox a:visited{color:#4020a0;}
+
+  /* 藍圓背景 */
+  #blueCircle{position:absolute;left:50%;bottom:6vh;transform:translateX(-50%);width:min(64vmin,70vw);height:min(64vmin,70vw);background:var(--circle);border-radius:50%;box-shadow:0 0 0 6px var(--circle-edge) inset;pointer-events:none;display:none;opacity:1;}
+
+  /* 小黑點/失敗 X */
+  #dot{position:absolute;width:26px;height:26px;pointer-events:none;z-index:2;}
+  #dot .core{position:absolute;inset:0;border-radius:50%;background:#000;}
+  #dot.dead .core{display:none;}
+  #dot .xbar{position:absolute;left:50%;top:50%;transform-origin:center;background:#000;border-radius:999px;}
+
+  /* 『５０！』 */
+  .toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:.4em .8em;background:rgba(255,255,255,.9);border:2px solid #000;border-radius:.5rem;font-size:clamp(22px,3vw,36px);white-space:pre;pointer-events:none;z-index:6;}
+
+  /* 光線層與樣式（加入亮紅描邊） */
+  #beamLayer{position:absolute;inset:0;pointer-events:none;z-index:1;}
+  .beam{position:absolute;background:var(--beam);opacity:.5;filter:drop-shadow(0 0 10px var(--beam)) drop-shadow(0 0 24px var(--beam));}
+  .beam.fadeOut{animation:fadeOut .3s linear forwards;}
+  .beam.vert{height:100%} .beam.horz{width:100%}
+  .beam.full{left:0;top:0;width:100%;height:100%;opacity:1}
+  .beam.fadeOutLong{animation:fadeOut .7s linear forwards;}
+  /* 描邊：直向左右兩側 / 橫向上下兩側（跟隨父元素透明度一起淡出） */
+  .beam.vert::before, .beam.vert::after,
+  .beam.horz::before, .beam.horz::after{
+    content:""; position:absolute; background:var(--beam-edge); opacity:.85; pointer-events:none;
+  }
+  .beam.vert::before{ left:0;   top:0; bottom:0; width:var(--beam-edge-w);}
+  .beam.vert::after { right:0;  top:0; bottom:0; width:var(--beam-edge-w);}
+  .beam.horz::before{ top:0;    left:0; right:0; height:var(--beam-edge-w);}
+  .beam.horz::after { bottom:0; left:0; right:0; height:var(--beam-edge-w);}
+
+  @keyframes fadeOut{from{opacity:1}to{opacity:0}}
+
+  /* 史詩台詞（單行、1.8×） */
+  #epicArea{position:fixed;left:50%;transform:translateX(-50%);top:0;width:min(120rem,98vw);text-align:center;pointer-events:none;overflow:visible;z-index:4;}
+  .epic{color:#fff;font-weight:800;text-shadow:0 1px 0 #000,1px 0 0 #000,0 -1px 0 #000,-1px 0 0 #000,1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000;-webkit-text-stroke:.8px #000;opacity:0;animation:epicFade 7000ms linear forwards;line-height:1.25;font-size:1.8em;white-space:nowrap;display:inline-block;}
+  @keyframes epicFade{0%{opacity:0}14.285%{opacity:1}85.714%{opacity:1}100%{opacity:0}}
+
+  /* 分數/延遲區 —— 延遲永久隱藏，但保留結構 */
+  #scoreWrap{display:flex;align-items:center;gap:48px;}
+  #delayWrap{display:none !important;align-items:center;gap:32px;} /* 永久隱藏 */
+</style>
+</head>
+<body>
+  <div id="game" aria-label="遊戲場景">
+
+    <!-- 語言（radio，外觀沿用方框✓；互斥且防呆） -->
+    <div id="langBox" class="ctrlRow">
+      <div id="langRow">
+        <label class="langOpt">
+          <span class="langText">繁體中文</span>
+          <input type="radio" name="lang" id="lang-zh" class="chk langInput" checked>
+        </label>
+        <label class="langOpt">
+          <span class="langText">English</span>
+          <input type="radio" name="lang" id="lang-en" class="chk langInput">
+        </label>
+        <label class="langOpt">
+          <span class="langText">日本語</span>
+          <input type="radio" name="lang" id="lang-ja" class="chk langInput">
+        </label>
+      </div>
+    </div>
+
+    <!-- 移動速度 -->
+    <div id="speedBox" class="ctrlRow">
+      <div class="ctrlGrid">
+        <div class="label" id="lblSpeed">移動速度</div>
+        <div class="cellR">
+          <div style="width:100%">
+            <input id="speedRange" type="range" min="0.25" max="3" step="0.01" value="1" />
+            <div id="speedVal" style="font-size:.9em;opacity:.85;margin-top:2px;">1.00×</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 隊友失誤率 -->
+    <div id="allyBox" class="ctrlRow">
+      <div class="ctrlGrid">
+        <div class="label" id="lblAlly">隊友失誤率</div>
+        <div class="cellR">
+          <div style="width:100%">
+            <input id="allyRange" type="range" min="0" max="100" step="1" value="5" />
+            <div id="allyVal" style="font-size:.9em;opacity:.85;margin-top:2px;">5%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 隨機延遲 -->
+    <div id="rndBox" class="ctrlRow">
+      <div class="ctrlGrid">
+        <div class="label" id="lblRnd">隨機延遲 (伺服器延遲、洞察之眼等)</div>
+        <div class="cellR">
+          <input type="checkbox" id="rndChk" class="chk" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 分數（延遲時間保留結構但永久隱藏） -->
+    <div id="scoreBox" class="ctrlRow">
+      <div class="ctrlGrid">
+        <div class="label" id="lblScore">得分</div>
+        <div class="cellR" id="scoreWrap">
+          <div id="scoreNum">0</div>
+          <div id="delayWrap">
+            <div class="label" id="lblDelay">總延遲時間</div>
+            <div id="delayVal">0.00 s</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右上：三語說明（依語言自動切換顯示） -->
+    <aside id="helpBox-zh" class="helpBox">
+      <h3>作者: 洛普貓 , ver.20250911 </h3>
+      <h3>Discord:
+        <a href="https://discord.gg/RJptwqhQXr" target="_blank" rel="noopener noreferrer">https://discord.gg/RJptwqhQXr</a>
+      </h3>
+      <p>　</p>      
+      <p>建議搭配以下任一背景音樂：</p>
+      <p>　
+        <a href="https://www.youtube.com/watch?v=VOItxiscm5M" target="_blank" rel="noopener noreferrer">布倫塔納斯</a>
+      </p>
+      <p>　
+        <a href="https://www.youtube.com/watch?v=jIxarCsmxZ8" target="_blank" rel="noopener noreferrer">うまぴょい伝説</a>
+      </p>
+      <p>祝副本通關順利 : )</p> 
+      <p>　</p>  
+      <p>沒有要做連線模式</p>   
+      <p>沒有要做一王披薩</p>  
+      <p>斗內我也沒有用，但是還是可以斗內我</p>              
+    </aside>
+
+    <aside id="helpBox-en" class="helpBox" style="display:none">
+      <h3>Author: ropkcat , ver.20250911</h3>
+      <h3>Discord:
+        <a href="https://discord.gg/RJptwqhQXr" target="_blank" rel="noopener noreferrer">https://discord.gg/RJptwqhQXr</a>
+      </h3>
+      <p>Discord welcome EN players!</p>
+      <p>　</p>      
+      <p>Recommand BGM: </p>
+      <p>　
+        <a href="https://www.youtube.com/watch?v=VOItxiscm5M" target="_blank" rel="noopener noreferrer">Bri Leith Gate 2</a>
+      </p>
+      <p>　
+        <a href="https://www.youtube.com/watch?v=jIxarCsmxZ8" target="_blank" rel="noopener noreferrer">うまぴょい伝説</a>
+      </p>
+      <p>Good luck on your phase : )</p> 
+    </aside>
+
+    <aside id="helpBox-ja" class="helpBox" style="display:none">
+      <h3>作者: ロプ猫 , ver.20250911</h3>
+      <h3>Discord:
+        <a href="https://discord.gg/RJptwqhQXr" target="_blank" rel="noopener noreferrer">https://discord.gg/RJptwqhQXr</a>
+      </h3>
+      <p>サーバーは日本語を話すプレイヤーを歓迎します！</p>
+      <p>　</p>      
+      <p>おすすめのBGM：</p>
+      <p>　
+        <a href="https://www.youtube.com/watch?v=VOItxiscm5M" target="_blank" rel="noopener noreferrer">ブリーレフ Boss 2</a>
+      </p>
+      <p>　
+        <a href="https://www.youtube.com/watch?v=jIxarCsmxZ8" target="_blank" rel="noopener noreferrer">うまぴょい伝説</a>
+      </p>
+      <p>ミッションは成功するだろう : )</p> 
+    </aside>
+
+    <!-- 中上：計時／結果／Start/Retry/馬（共用槽位） -->
+    <div id="centerPanel">
+      <div id="timerTop"></div>
+      <div id="resultMsg"></div>
+      <div id="ctaSlot">
+        <div id="horseMark">馬</div>
+        <button id="startBtn" type="button">開始</button>
+      </div>
+      <div id="epicArea"></div>
+    </div>
+
+    <div id="blueCircle" aria-hidden="true"></div>
+    <div id="beamLayer" aria-hidden="true"></div>
+
+    <div id="dot" role="img" aria-label="可移動的小黑點"><div class="core"></div></div>
+  </div>
+
+<script>
+(()=>{
+  /* ========= 參考你最後一版的遊戲邏輯，補強穩定性 ========= */
+
+  const game = document.getElementById('game');
+  const startBtn = document.getElementById('startBtn');
+  const resultMsg = document.getElementById('resultMsg');
+  const timerTop = document.getElementById('timerTop');
+  const dot = document.getElementById('dot');
+  const core = dot.querySelector('.core');
+  const circle = document.getElementById('blueCircle');
+  const beamLayer = document.getElementById('beamLayer');
+
+  const langBox  = document.getElementById('langBox');
+  const speedBox = document.getElementById('speedBox');
+  const allyBox  = document.getElementById('allyBox');
+  const rndBox   = document.getElementById('rndBox');
+
+  const lblSpeed = document.getElementById('lblSpeed');
+  const lblAlly  = document.getElementById('lblAlly');
+  const lblRnd   = document.getElementById('lblRnd');
+
+  const scoreBox   = document.getElementById('scoreBox');
+  const lblScore   = document.getElementById('lblScore');
+  const lblDelay   = document.getElementById('lblDelay');
+  const scoreNum   = document.getElementById('scoreNum');
+  const delayVal   = document.getElementById('delayVal');
+
+  const centerPanel = document.getElementById('centerPanel');
+  const ctaSlot = document.getElementById('ctaSlot');
+  const horseMark = document.getElementById('horseMark');
+  const epicArea = document.getElementById('epicArea');
+
+  const speedRange = document.getElementById('speedRange');
+  const speedVal   = document.getElementById('speedVal');
+  const allyRange  = document.getElementById('allyRange');
+  const allyVal    = document.getElementById('allyVal');
+  const rndChk     = document.getElementById('rndChk');
+
+  const cbZH = document.getElementById('lang-zh');
+  const cbEN = document.getElementById('lang-en');
+  const cbJA = document.getElementById('lang-ja');
+
+  const helpBoxes = {
+    zh: document.getElementById('helpBox-zh'),
+    en: document.getElementById('helpBox-en'),
+    ja: document.getElementById('helpBox-ja'),
+  };
+
+  /* ---- 文案（多語） ---- */
+  const I18N = {
+    zh: {
+      speed: '移動速度',
+      ally:  '隊友失誤率',
+      rnd:   '隨機延遲 (伺服器延遲、洞察之眼等)',
+      start: '開始',
+      retry: '再來一局',
+      horse: '馬',
+      success:'你好棒！',
+      fail:'沒辦法...',
+      scoreLabel: '得分',
+      delayLabel: '總延遲時間',
+      epicEnter: '充滿共鳴的能量,讓人感受到甦醒的帷帳氣息.',
+      epicSuccess: '礦物碎片中釋放的能量共鳴越來越強烈. 帷帳之力似乎逐漸甦醒.',
+    },
+    en: {
+      speed: 'Move Speed',
+      ally:  'Teammate Fail Rate',
+      rnd:   'Server Random Delay',
+      start: 'Start',
+      retry: 'Retry',
+      horse: 'Horse',
+      success:'Congratulations !',
+      fail:'You failed...',
+      scoreLabel: 'Score',
+      delayLabel: 'Total Delay Time',
+      epicEnter: 'The awakened sanctuary seems to hum, filled with resonant energy.',
+      epicSuccess: 'The fragments begin to resonate more strongly as the sanctuary\'s power awakens.',
+    },
+    ja: {
+      speed: 'いどうそくど',
+      ally:  'パートナーエラー率',
+      rnd:   'ランダムなサーバー遅延',
+      start: '始める',
+      retry: 'やりなおし',
+      horse: 'うま',
+      success:'おめでとう！',
+      fail:'ざんねん...',
+      scoreLabel: 'とくてん',
+      delayLabel: 'そうちえんじかん',
+      epicEnter: '共鳴するエネルギーに満たされ、目覚めのベールの息吹を感じます。',
+      epicSuccess: '破片から放出されるエネルギーはますます強くなり、ベールの力は徐々に覚醒していった。',
+    }
+  };
+
+  function getLang(){
+    if (cbEN.checked) return 'en';
+    if (cbJA.checked) return 'ja';
+    if (cbZH.checked) return 'zh';
+    cbZH.checked = true; return 'zh';
+  }
+  function applyLanguage(){
+    const L = I18N[getLang()];
+    lblSpeed.textContent = L.speed;
+    lblAlly.textContent  = L.ally;
+    lblRnd.textContent   = L.rnd;
+    lblScore.textContent = L.scoreLabel;
+    lblDelay.textContent = L.delayLabel;
+    horseMark.textContent = L.horse;
+
+    if (startBtn.style.display!=='none'){
+      startBtn.textContent = (startBtn.dataset.mode==='retry') ? L.retry : L.start;
+    }
+    if (resultMsg.style.display!=='none'){
+      const cur = resultMsg.dataset.type;
+      resultMsg.textContent = (cur==='success') ? L.success : L.fail;
+    }
+    updateHelpVisibility();
+  }
+
+  /* 防呆：語言採 radio，仍再加程式保證互斥 */
+  document.getElementById('langRow').addEventListener('change', ()=>{
+    const chosen = document.querySelector('input[name="lang"]:checked') || cbZH;
+    [cbZH,cbEN,cbJA].forEach(cb=>{ cb.checked = (cb===chosen); });
+    applyLanguage();
+  });
+
+  function updateHelpVisibility(){
+    const showStart = (startBtn.style.display!=='none' && startBtn.dataset.mode!=='retry');
+    const L = getLang();
+    Object.entries(helpBoxes).forEach(([k,el])=>{
+      el.style.display = (showStart && k===L) ? 'block' : 'none';
+    });
+  }
+  function updateHorseMark(){
+    const circleVisible = (window.getComputedStyle(circle).display !== 'none' && circle.style.opacity !== '0');
+    const btnVisible    = (window.getComputedStyle(startBtn).display !== 'none');
+    horseMark.style.display = (circleVisible && !btnVisible) ? 'flex' : 'none';
+  }
+
+  /* ===== 遊戲狀態 ===== */
+  let allowFail = false;
+  let dispTime = 0, dispFrozen = false;    // 顯示計時（上限 15s）
+  const DISP_MAX = 15;
+
+  let delayAcc = 0;                  // 總延遲時間：保留計算，但不顯示
+  let rndEnabledAtStart = false;
+  let firstEnterShown = false;
+
+  const EXPAND_VIS = 1.25;          // 光線顯示寬放大
+  const BASE_THICK_RATIO = 0.40;    // 光線「基礎厚度」 = 藍圈直徑 * 0.40
+  const DETECT_EXPAND = 0.03;       // 額外 3% 判定
+
+  const BEAM_STOP_AT = 15000;       // 15s 停止出光
+  const CIRCLE_FADE_MS = 1000;
+
+  let controlUnlockAt = 0, showCircle = false, beamsActive = false, beamStartedAt = 0;
+  let beamTimeout = 0, allyTimeout = 0, fiftyTimeout = 0, circleTimeout = 0;
+  let fifteenTimer = 0, fullscreenTimer = 0, fullscreenDone = false, rndInterval = 0;
+  let accTime = 0, success = false, failed = false, lastBeamVertical = Math.random() < 0.5;
+
+  const speedBase = 285; let speedFactor = parseFloat(speedRange.value); let speedCurrent = speedBase * speedFactor;
+  function updateSpeedUI(){ speedFactor = parseFloat(speedRange.value); speedCurrent = speedBase * speedFactor; speedVal.textContent = speedFactor.toFixed(2) + '×'; }
+  updateSpeedUI(); speedRange.addEventListener('input', updateSpeedUI);
+
+  let allyRate = parseInt(allyRange.value, 10);
+  function updateAllyUI(){ allyRate = parseInt(allyRange.value, 10); allyVal.textContent = `${allyRate}%`; }
+  updateAllyUI(); allyRange.addEventListener('input', updateAllyUI);
+
+  /* 幾何：藍圈中心、網格 */
+  function computeCircleCenter(){
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const vmin = Math.min(vw, vh);
+    const diameter = Math.min(0.64 * vmin, 0.70 * vw);
+    const r = diameter / 2;
+    const g = game.getBoundingClientRect();
+    const cx = g.left + g.width / 2;
+    const cy = g.top + g.height - (0.06 * vh) - r;
+    return {cx: cx - g.left, cy: cy - g.top, r};
+  }
+  function gridFromCircle(){
+    const g = game.getBoundingClientRect();
+    const c = circle.getBoundingClientRect();
+    const dia = c.width;
+    const cx = (c.left - g.left) + c.width/2;
+    const cy = (c.top  - g.top ) + c.height/2;
+    const hy = cy - 0.125 * dia;                 // 橫向基準中心（上移 12.5% 直徑）
+    const T  = dia * BASE_THICK_RATIO;           // 基礎厚度
+    const S  = T;                                // 三條中心間距 = 基礎厚度
+
+    // 固定三條
+    const centersX3 = [cx - S, cx, cx + S];
+    const centersY3 = [hy - S, hy, hy + S];
+    // 追蹤延展（直 13 條 / 橫 9 條）
+    const centersX13 = []; for (let k=-6;k<=6;k++) centersX13.push(cx + k*S);
+    const centersY9  = []; for (let k=-4;k<=4;k++) centersY9.push(hy + k*S);
+
+    return {g,c, dia, cx, cy, hy, T, centersX3, centersY3, centersX13, centersY9};
+  }
+  function nearestIndex(val, centers){ let best=0, bd=Infinity; for(let i=0;i<centers.length;i++){ const d=Math.abs(val-centers[i]); if(d<bd){bd=d;best=i;} } return best; }
+
+  /* 小黑點 */
+  const radius = 13; let x=0,y=0,tx=0,ty=0;
+  const keys = {up:false,down:false,left:false,right:false};
+  function renderDot(){ dot.style.transform = `translate(${x - radius}px, ${y - radius}px)`; }
+  function removeXBars(){ dot.querySelectorAll('.xbar').forEach(n=>n.remove()); }
+  function setDotNormal(){ dot.classList.remove('dead'); removeXBars(); core.style.display='block'; renderDot(); }
+  function setDotFailed(){ dot.classList.add('dead'); core.style.display='none'; removeXBars(); const t=radius/2; const mk=r=>{ const b=document.createElement('div'); b.className='xbar'; b.style.width=`${t}px`; b.style.height=`${radius*2}px`; b.style.left='50%'; b.style.top='50%'; b.style.transform=`translate(-50%,-50%) rotate(${r}deg)`; dot.appendChild(b); }; mk(45); mk(-45); renderDot(); }
+  function placeDotAtCircleCenter(){ const c=computeCircleCenter(); x=tx=c.cx; y=ty=c.cy; renderDot(); }
+  placeDotAtCircleCenter();
+
+  /* 工具 */
+  const randInt=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+  function setTimerText(t){ timerTop.textContent = t || ""; }
+  function isDotInsideCircle(){ if(!showCircle) return false; const g=game.getBoundingClientRect(), c=circle.getBoundingClientRect(); const cx=(c.left-g.left)+c.width/2, cy=(c.top-g.top)+c.height/2, r=c.width/2; const dx=x-cx, dy=y-cy; return (dx*dx+dy*dy)<=r*r; }
+  function circleRectIntersect(cx,cy,cr, rx,ry,rw,rh){ const nx=Math.max(rx,Math.min(cx,rx+rw)), ny=Math.max(ry,Math.min(cy,ry+rh)); const dx=cx-nx, dy=cy-ny; return (dx*dx+dy*dy)<=cr*cr; }
+
+  /* 光線矩形（顯示 vs 判定） */
+  function rectsForBeam(vert, idx, useExtended=false){
+    const {g, T, centersX3, centersY3, centersX13, centersY9} = gridFromCircle();
+    const centersX = useExtended ? centersX13 : centersX3;
+    const centersY = useExtended ? centersY9  : centersY3;
+
+    if(vert){
+      const centerX = centersX[idx];
+      const Wv = T * EXPAND_VIS; // 顯示寬
+      return { vis:{rx:centerX - Wv/2, ry:0, rw:Wv, rh:g.height}, det:{rx:centerX - T/2, ry:0, rw:T, rh:g.height}, v:true };
+    }else{
+      const centerY = centersY[idx];
+      const Hv = T * EXPAND_VIS;
+      return { vis:{rx:0, ry:centerY - Hv/2, rw:g.width, rh:Hv}, det:{rx:0, ry:centerY - T/2, rw:g.width, rh:T}, v:false };
+    }
+  }
+  function fixedSixBeams(){
+    const out=[]; 
+    for(let i=0;i<3;i++){ out.push(rectsForBeam(true,i,false));  }
+    for(let i=0;i<3;i++){ out.push(rectsForBeam(false,i,false)); }
+    return out;
+  }
+
+  function showResultMsg(t,type){ resultMsg.style.display='block'; resultMsg.textContent=t; resultMsg.dataset.type=type; }
+  function clearResultMsg(){ resultMsg.style.display='none'; resultMsg.textContent=''; resultMsg.dataset.type=''; }
+
+  function showEpicLine(text){ epicArea.innerHTML=""; const p=document.createElement('div'); p.className='epic'; p.textContent=text; epicArea.appendChild(p); positionEpicArea(); }
+  function positionEpicArea(){ const r=ctaSlot.getBoundingClientRect(); epicArea.style.top=(r.bottom+8)+'px'; }
+  window.addEventListener('resize', ()=>{ if(epicArea.childElementCount) positionEpicArea(); });
+
+  function onSuccess(){
+    if(success||failed) return;
+    success=true;
+    const L = I18N[getLang()];
+    showResultMsg(L.success,'success');
+    startBtn.dataset.mode='retry';
+    startBtn.textContent=L.retry;
+    startBtn.style.display='block';
+    updateHelpVisibility(); updateHorseMark();
+    showEpicLine(L.epicSuccess);
+  }
+  function onFail(){
+    if(failed) return;
+    failed=true;
+    dispFrozen = true; // 顯示計時停止（影響分數）
+    const L = I18N[getLang()];
+    showResultMsg(L.fail,'fail');
+    setDotFailed(); tx=x; ty=y;
+    startBtn.dataset.mode='retry';
+    startBtn.textContent=L.retry;
+    startBtn.style.display='block';
+    updateHelpVisibility(); updateHorseMark();
+  }
+
+  function lockControls(lock){
+    [langBox,speedBox,allyBox,rndBox].forEach(el=>el.classList.toggle('disabled',lock));
+    speedRange.disabled=lock; allyRange.disabled=lock; rndChk.disabled=lock;
+    [cbZH,cbEN,cbJA].forEach(cb=>cb.disabled=lock);
+  }
+
+  function cancelMovement(){ const k=keys; k.up=k.down=k.left=k.right=false; tx=x; ty=y; }
+  function enterRandomLock(ms){ const now=performance.now(); const capAt=now+750; const target=now+ms; controlUnlockAt=Math.min(Math.max(controlUnlockAt,target),capAt); cancelMovement(); }
+
+  function fullReset(lockMove=false){
+    [beamTimeout,allyTimeout,fiftyTimeout,circleTimeout,fifteenTimer,fullscreenTimer].forEach(t=>clearTimeout(t));
+    beamTimeout=allyTimeout=fiftyTimeout=circleTimeout=fifteenTimer=fullscreenTimer=0;
+    if(rndInterval){ clearInterval(rndInterval); rndInterval=0; window._rndInterval=null; }
+    showCircle=false; beamsActive=false; beamStartedAt=0; fullscreenDone=false; allowFail=false;
+    accTime=0; success=false; failed=false; lastBeamVertical=Math.random()<0.5;
+    dispTime=0; dispFrozen=false; delayAcc=0; rndEnabledAtStart=false; firstEnterShown=false;
+
+    /* Retry 立刻歸零並隱藏分數（修正二次開始殘留） */
+    scoreNum.textContent = '0';
+    scoreBox.style.display='none';
+
+    setTimerText(""); timerTop.style.display='none'; clearResultMsg();
+    circle.style.display='none'; circle.style.opacity=1;
+    startBtn.dataset.mode='start';
+    startBtn.textContent=I18N[getLang()].start;
+    startBtn.style.display='block';
+    [...beamLayer.querySelectorAll('.beam')].forEach(n=>n.remove());
+    setDotNormal(); placeDotAtCircleCenter(); lockControls(false);
+    controlUnlockAt = lockMove ? performance.now()+300 : 0; if(lockMove) cancelMovement();
+    updateHelpVisibility(); updateHorseMark(); epicArea.innerHTML="";
+  }
+
+  function showFiftyToast(){ const r=ctaSlot.getBoundingClientRect(); const el=document.createElement('div'); el.className='toast'; el.textContent=' ５０！'; el.style.left=(r.left+r.width/2)+'px'; el.style.top=(r.top+r.height/2)+'px'; el.style.transform='translate(-50%,-50%)'; document.body.appendChild(el); setTimeout(()=>el.remove(),1000); }
+  function freezeDisplayTimer(){ if(!dispFrozen) dispFrozen=true; }
+
+  /* ====== 光線產生 ====== */
+  function spawnBeam(){
+    if(!beamsActive||fullscreenDone) return;
+    const G = gridFromCircle();
+    const after10 = ((performance.now()-beamStartedAt)/1000) >= 10;
+    const v = after10 ? !lastBeamVertical : (Math.random()<0.5);
+    const idx = v ? nearestIndex(x, G.centersX13) : nearestIndex(y, G.centersY9);
+    const {vis, det} = rectsForBeam(v, idx, true);
+
+    const el=document.createElement('div'); el.className='beam '+(v?'vert':'horz');
+    if(v){ el.style.left=vis.rx+'px'; el.style.width=vis.rw+'px'; } else { el.style.top=vis.ry+'px'; el.style.height=vis.rh+'px'; }
+    beamLayer.appendChild(el);
+
+    setTimeout(()=>{
+      el.style.opacity='1';
+      if(allowFail){
+        let rx2=det.rx, ry2=det.ry, rw2=det.rw, rh2=det.rh;
+        if(v){ const ex=rw2*DETECT_EXPAND; rx2-=ex/2; rw2+=ex; } else { const ey=rh2*DETECT_EXPAND; ry2-=ey/2; rh2+=ey; }
+        const hit=circleRectIntersect(x,y,radius,rx2,ry2,rw2,rh2);
+        const inside=isDotInsideCircle();
+        if(hit){ freezeDisplayTimer(); if(accTime<7.5 || !inside) onFail(); }
+      }
+      el.classList.add('fadeOut');
+    },1000);
+    setTimeout(()=>el.remove(),1300);
+
+    lastBeamVertical=v;
+    scheduleNextBeam();
+  }
+
+  function spawnAllyBeam(){
+    if(!beamsActive||fullscreenDone) return;
+    if(performance.now()-beamStartedAt>=10000) return;
+
+    const roll=Math.floor(Math.random()*100);
+    if(roll>=parseInt(allyRange.value,10)){ scheduleNextAllyBeam(); return; }
+
+    const pick= fixedSixBeams()[Math.floor(Math.random()*6)];
+    const {vis, det, v} = pick;
+
+    const el=document.createElement('div'); el.className='beam '+(v?'vert':'horz');
+    if(v){ el.style.left=vis.rx+'px'; el.style.width=vis.rw+'px'; } else { el.style.top=vis.ry+'px'; el.style.height=vis.rh+'px'; }
+    beamLayer.appendChild(el);
+
+    setTimeout(()=>{
+      el.style.opacity='1';
+      if(allowFail){
+        let rx2=det.rx, ry2=det.ry, rw2=det.rw, rh2=det.rh;
+        if(v){ const ex=rw2*DETECT_EXPAND; rx2-=ex/2; rw2+=ex; } else { const ey=rh2*DETECT_EXPAND; ry2-=ey/2; rh2+=ey; }
+        const hit=circleRectIntersect(x,y,radius,rx2,ry2,rw2,rh2);
+        const inside=isDotInsideCircle();
+        if(hit){ freezeDisplayTimer(); if(accTime<7.5 || !inside) onFail(); }
+      }
+      el.classList.add('fadeOut');
+    },1000);
+    setTimeout(()=>el.remove(),1300);
+    scheduleNextAllyBeam();
+  }
+
+  function nextDelayByElapsed(){
+    const e=(performance.now()-beamStartedAt);
+    if(e<5000)  return Math.floor(Math.random()*(2000-1000+1))+1000;
+    if(e<10000) return Math.floor(Math.random()*(1000-500+1))+500;
+    return 500;
+  }
+  function scheduleNextBeam(){ if(!beamsActive||fullscreenDone) return; clearTimeout(beamTimeout); beamTimeout=setTimeout(spawnBeam,nextDelayByElapsed()); }
+  function scheduleNextAllyBeam(){ if(!beamsActive||fullscreenDone) return; if(performance.now()-beamStartedAt>=10000) return; clearTimeout(allyTimeout); allyTimeout=setTimeout(spawnAllyBeam,nextDelayByElapsed()); }
+
+  function spawnFullscreenJudge(){
+    if(fullscreenDone) return; fullscreenDone=true;
+    const g=game.getBoundingClientRect(); const el=document.createElement('div'); el.className='beam full fadeOutLong'; beamLayer.appendChild(el);
+    if(allowFail){
+      const rx2=-g.width*0.03/2, ry2=-g.height*0.03/2, rw2=g.width*(1+0.03), rh2=g.height*(1+0.03);
+      const hit=circleRectIntersect(x,y,radius,rx2,ry2,rw2,rh2), inside=isDotInsideCircle();
+      if(hit){ freezeDisplayTimer(); if(accTime<7.5 || !inside) onFail(); }
+    }
+    setTimeout(()=>el.remove(),700);
+    setTimeout(()=>{ 
+      if(circle.style.display!=='none'){ 
+        circle.style.transition=`opacity ${1000}ms linear`; circle.style.opacity=0;
+        setTimeout(()=>{ circle.style.display='none'; showCircle=false; circle.style.transition=''; circle.style.opacity=1; updateHorseMark(); }, 1000);
+      }
+    },5000);
+  }
+
+  /* ===== 主迴圈：移動、計時、分數 ===== */
+  let lastFrame=0;
+  function loop(now){
+    if(!lastFrame) lastFrame=now;
+    const dt=(now-lastFrame)/1000; lastFrame=now;
+
+    // 累計「總延遲時間」（隱藏顯示，但持續計算）
+    if (!dispFrozen && rndEnabledAtStart && performance.now() < controlUnlockAt) { delayAcc += dt; }
+
+    // 移動
+    let kx=0,ky=0; if(keys.up)ky-=1; if(keys.down)ky+=1; if(keys.left)kx-=1; if(keys.right)kx+=1;
+    if(!failed && performance.now()>=controlUnlockAt){
+      if(kx||ky){
+        const len=Math.hypot(kx,ky)||1, vx=(kx/len)*speedCurrent, vy=(ky/len)*speedCurrent;
+        const g=game.getBoundingClientRect();
+        x=Math.min(Math.max(x+vx*dt,radius),g.width-radius);
+        y=Math.min(Math.max(y+vy*dt,radius),g.height-radius);
+        tx=x; ty=y; renderDot();
+      }else{
+        const dx=tx-x, dy=ty-y, dist=Math.hypot(dx,dy);
+        if(dist>0.5){ const step=Math.min(dist,speedCurrent*dt); x+=dx/dist*step; y+=dy/dist*step; renderDot(); }
+      }
+    }
+
+    // 第一次進圈彈字幕
+    if (showCircle && !firstEnterShown && isDotInsideCircle()){
+      firstEnterShown = true;
+      const L = I18N[getLang()];
+      showEpicLine(L.epicEnter);
+    }
+
+    // 成功判定（7.5s）、顯示計時上限 15s
+    if(showCircle && !success && !failed && isDotInsideCircle()){
+      accTime += dt;
+      if(accTime>=7.5){ onSuccess(); }
+    }
+    if (showCircle && !failed && !dispFrozen && isDotInsideCircle()){
+      dispTime = Math.min(DISP_MAX, dispTime + dt);
+    }
+
+    // 顯示：計時與分數
+    if (showCircle && !failed){
+      timerTop.style.display='block';
+      timerTop.textContent = dispTime.toFixed(2)+" s";
+
+      const Tt = dispTime, s = parseFloat(speedRange.value), a = parseInt(allyRange.value,10), rndPow = rndEnabledAtStart ? 1 : 0;
+      const raw = Math.pow(Math.max(Tt-3,0),1.05)*Math.pow(1/s,1.05)*Math.pow(1+0.2*a,1.01)*Math.pow(1.1,rndPow);
+      const score = Math.ceil(isFinite(raw)?raw:0);
+      scoreNum.textContent = String(score);
+
+      delayVal.textContent = `${delayAcc.toFixed(2)} s`; // 計算保留，UI 永久隱藏
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  /* 點擊移動（避免點到控制列與說明） */
+  function onClickMove(ev){
+    const now=performance.now(); if(failed || now<controlUnlockAt) return;
+    if(ev.target.closest('.ctrlRow')) return;
+    if(ev.target.closest('.helpBox')) return;
+    if(ev.target.closest('#centerPanel')) return;
+    const g=game.getBoundingClientRect(); tx=ev.clientX-g.left; ty=ev.clientY-g.top;
+  }
+  ['pointerdown','mousedown','mouseup','click','touchstart'].forEach(evt=>{
+    langBox.addEventListener(evt, e=>e.stopPropagation());
+    speedBox.addEventListener(evt, e=>e.stopPropagation());
+    allyBox .addEventListener(evt, e=>e.stopPropagation());
+    rndBox  .addEventListener(evt, e=>e.stopPropagation());
+    document.querySelectorAll('.helpBox').forEach(h=>h.addEventListener(evt, e=>e.stopPropagation()));
+    centerPanel.addEventListener(evt, e=>e.stopPropagation());
+  });
+
+  function onKey(e,down){
+    const code=e.code;
+    if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","KeyW","KeyA","KeyS","KeyD"].includes(code)) e.preventDefault();
+    if(failed || performance.now()<controlUnlockAt) return;
+    if(code==='ArrowUp'||code==='KeyW') keys.up=down;
+    if(code==='ArrowDown'||code==='KeyS') keys.down=down;
+    if(code==='ArrowLeft'||code==='KeyA') keys.left=down;
+    if(code==='ArrowRight'||code==='KeyD') keys.right=down;
+  }
+  window.addEventListener('keydown',e=>onKey(e,true));
+  window.addEventListener('keyup',e=>onKey(e,false));
+
+  /* Start / Retry */
+  function onStartClick(){
+    const L = I18N[getLang()];
+    if(startBtn.dataset.mode==='retry'){ fullReset(true); return; }
+
+    const now=performance.now(); controlUnlockAt=now+300;
+    cancelMovement();
+    startBtn.style.display='none'; resultMsg.style.display='none';
+    allowFail = false;
+    updateHelpVisibility(); updateHorseMark();
+
+    /* 新一局：顯示分數區並從 0 開始 */
+    scoreNum.textContent = '0';
+    scoreBox.style.display='block';
+
+    rndEnabledAtStart = !!rndChk.checked;
+
+    [langBox,speedBox,allyBox,rndBox].forEach(el=>el.classList.add('disabled'));
+    speedRange.disabled=true; allyRange.disabled=true; rndChk.disabled=true; [cbZH,cbEN,cbJA].forEach(cb=>cb.disabled=true);
+
+    // 隨機延遲：每 0.25s、5% 觸發、鎖 0.5s（堆疊上限 0.75s）
+    if (rndEnabledAtStart && !window._rndInterval){
+      window._rndInterval=setInterval(()=>{ if(Math.random()<0.05){ enterRandomLock(500); } },250);
+      rndInterval=window._rndInterval;
+    }
+
+    const rand=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+    setTimeout(()=>{
+      showFiftyToast(); // 以 ctaSlot 為錨點
+      setTimeout(()=>{
+        circle.style.display='block'; circle.style.opacity=1; showCircle=true;
+        allowFail = true; // 藍圈出現才允許 Fail
+        timerTop.style.display='block'; timerTop.textContent=(dispTime.toFixed(2)+" s");
+        beamsActive=true; beamStartedAt=performance.now();
+        updateHelpVisibility(); updateHorseMark();
+
+        // 15s 停掉光線，並「凍結顯示用計時」
+        fifteenTimer=setTimeout(()=>{
+          if(fullscreenDone) return;
+          clearTimeout(beamTimeout); clearTimeout(allyTimeout);
+          beamsActive=false;
+          if (!dispFrozen) dispFrozen = true;
+          fullscreenTimer=setTimeout(spawnFullscreenJudge, 2000);
+        }, BEAM_STOP_AT);
+
+        // 光線時序（0~5s：1~2s；5~10s：0.5~1s；10s+：0.5s 並直橫交替）
+        (function scheduleNextBeam(){ clearTimeout(beamTimeout); beamTimeout=setTimeout(spawnBeam, (()=>{
+          const e=(performance.now()-beamStartedAt);
+          if(e<5000) return rand(1000,2000);
+          if(e<10000) return rand(500,1000);
+          return 500;
+        })()); })();
+
+        (function scheduleNextAlly(){ if(performance.now()-beamStartedAt>=10000) return; clearTimeout(allyTimeout); allyTimeout=setTimeout(function(){ spawnAllyBeam(); scheduleNextAlly(); }, (()=>{
+          const e=(performance.now()-beamStartedAt);
+          if(e<5000) return rand(1000,2000);
+          if(e<10000) return rand(500,1000);
+          return 500;
+        })()); })();
+
+      }, rand(1000,3000));
+    }, rand(1000,5000));
+  }
+
+  /* 事件與初始化 */
+  game.addEventListener('click', onClickMove);
+  startBtn.addEventListener('click', onStartClick);
+  window.addEventListener('resize', placeDotAtCircleCenter);
+
+  (function init(){
+    startBtn.dataset.mode='start';
+    applyLanguage();
+    updateHelpVisibility();
+    updateHorseMark();
+    requestAnimationFrame(loop);
+  })();
+})();
+</script>
+</body>
+</html>
