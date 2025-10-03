@@ -39,12 +39,12 @@
   </style>
 </head>
 <body>
-  <h1>LINE 貼圖搜尋器（重構版）</h1>
+  <h1>LINE 貼圖搜尋器</h1>
   <div class="hint">資料來源：合併檔 <code>_merged.json</code>（格式：[{ id, title, stickers[] } ...]）。可直接載入預設路徑或自選檔案。</div>
 
   <div class="panel">
     <div class="toolbar">
-      <button id="loadDefault" class="primary">載入 ./json/_merged.json</button>
+      <button id="loadDefault" class="primary">載入 ./json/merged.json</button>
       <label class="row"><input id="file" type="file" accept="application/json" class="hidden"><button id="pick">選擇合併 JSON</button></label>
       <button id="exportNotes">匯出備註</button>
       <button id="importNotes">匯入備註</button>
@@ -118,7 +118,7 @@
     let sideSticker = null; // {sid, title, pid}
 
     // ========== 初始化事件 ==========
-    el('loadDefault').addEventListener('click', ()=> loadMerged('./json/_merged.json'));
+    el('loadDefault').addEventListener('click', ()=> loadMerged('./json/merged.json'));
 
     el('pick').addEventListener('click', ()=> el('file').click());
     el('file').addEventListener('change', async ()=>{
@@ -345,7 +345,7 @@
     }
 
     // 預載可選：自動嘗試載入預設檔，可依需求改成註解
-    loadMerged('./json/_merged.json');
+    loadMerged('./json/merged.json');
   </script>
 </body>
 </html>
