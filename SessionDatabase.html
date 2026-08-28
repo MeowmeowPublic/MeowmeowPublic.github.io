@@ -832,7 +832,7 @@ tr.tree-parent[data-craft="true"] td:first-child { box-shadow: inset 3px 0 0 var
           <div class="panel-head">
             <div>
               <h2>材料統整</h2>
-              <p>成品材料與其細項材料合併成一棵樹。設為自行製作的項目可展開，看到往下一層的實際需求量。</p>
+              <p>成品材料與其細項材料合併成一棵樹。設為自行製作的項目可展開，點整列任一處即可展開或收合。</p>
             </div>
             <div class="u-row">
               <button class="btn btn--sm" id="tree-expand" type="button">全部展開</button>
@@ -1065,8 +1065,8 @@ tr.tree-parent[data-craft="true"] td:first-child { box-shadow: inset 3px 0 0 var
         <div class="panel" id="cooking-material-panel" hidden>
           <div class="panel-head">
             <div>
-              <h2>材料統整</h2>
-              <p>設為自製的材料可展開，看到它自己需要的下一層材料。</p>
+              <h2>製作樹</h2>
+              <p>一路展開到原料為止。點整列任一處都可以展開或收合。</p>
             </div>
             <div class="u-row">
               <button class="btn btn--sm" id="plan-expand" type="button">全部展開</button>
@@ -1076,12 +1076,29 @@ tr.tree-parent[data-craft="true"] td:first-child { box-shadow: inset 3px 0 0 var
           <div class="table-wrap stack">
             <table>
               <thead><tr>
-                <th>材料</th><th class="num">需求配比</th><th>取得方式</th><th>用於</th>
+                <th>項目</th><th class="num">份數</th><th class="num">本層佔比</th><th>取得方式</th>
               </tr></thead>
               <tbody id="plan-tree"></tbody>
             </table>
           </div>
-          <div class="note note--info" style="margin-top:var(--sp-4)"><span><code>CookingRecipe.xml</code> 的 <code>amount</code> 是配方比例而非實際個數（526 道中有 414 道合計為 100），因此這裡累加出來的是<strong>相對需求量</strong>，用來比較哪些材料需要得最多。XML 沒有提供每份料理的實際材料個數。</span></div>
+          <div class="note note--info" style="margin-top:var(--sp-4)"><span><code>CookingRecipe.xml</code> 的 <code>amount</code> 是<strong>同一鍋之內的材料比例</strong>（526 道中有 414 道合計為 100），只在該配方內部有意義，跨層相乘沒有物理意義，因此這裡不那樣計算。製作樹改以<strong>份數</strong>遞迴展開：要做 N 份料理，每個設為自製的材料就得先做 N 份。「本層佔比」是該材料在它上一層配方裡的比例，供下鍋時參考。XML 沒有提供每份料理實際消耗幾個材料。</span></div>
+        </div>
+
+        <div class="panel" id="cooking-raw-panel" hidden>
+          <div class="panel-head">
+            <div>
+              <h2>要準備的原料</h2>
+              <p>製作樹最末端、需要自己去採集或購買的東西。「用於」會標示它在各配方中的比例。</p>
+            </div>
+          </div>
+          <div class="table-wrap stack">
+            <table>
+              <thead><tr>
+                <th>原料</th><th class="num">需要份量</th><th>用於</th>
+              </tr></thead>
+              <tbody id="raw-rows"></tbody>
+            </table>
+          </div>
         </div>
 
         <div class="panel">
@@ -1402,6 +1419,23 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
 
   function emptyRow(colspan, title, hint) {
     return '<tr><td colspan="' + colspan + '"><div class="empty"><b>' + esc(title) + "</b>" + esc(hint || "") + "</div></td></tr>";
+  }
+
+
+  /**
+   * 讓整列都能點擊展開，不只箭頭。
+   * 點在物品名稱等按鈕上時不觸發，避免和交叉索引抽屜衝突。
+   */
+  function bindRowToggle(tbodyId, expandedSet, rerender) {
+    $(tbodyId).addEventListener("click", (event) => {
+      if (event.target.closest("button:not(.tree-toggle)")) return;
+      const row = event.target.closest("tr.tree-parent");
+      if (!row || !row.dataset.node) return;
+      const key = row.dataset.node;
+      if (expandedSet.has(key)) expandedSet.delete(key);
+      else expandedSet.add(key);
+      rerender();
+    });
   }
 
   let toastTimer = null;
@@ -2428,7 +2462,8 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
         ? chip("自行製作 " + node.batches + " 批", "accent")
         : node.recipe ? chip("直接取得", "quiet") : chip("只能直接取得", "quiet");
 
-      const parent = '<tr class="tree-parent" data-craft="' + node.craft + '">' +
+      const parent = '<tr class="tree-parent" data-craft="' + node.craft + '"' +
+        (expandable ? ' data-node="' + esc(node.id) + '"' : "") + ">" +
         '<td data-label="材料">' + toggle +
         '<button type="button" class="item-link cell-title" data-item="' + esc(node.id) + '">' + esc(node.name) + "</button>" +
         (expandable ? '<span class="cell-sub">展開後 ' + node.children.length + " 項細項材料</span>" : "") + "</td>" +
@@ -2455,12 +2490,7 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
 
     $("material-tree").innerHTML = html || emptyRow(4, "尚未選擇貿易品", "請先在上方勾選要兌換的貿易品。");
 
-    qsa("[data-tree]", $("material-tree")).forEach((button) => button.addEventListener("click", () => {
-      const id = button.dataset.tree;
-      if (trade.expanded.has(id)) trade.expanded.delete(id);
-      else trade.expanded.add(id);
-      renderMaterialTree();
-    }));
+
   }
 
   function renderFinalList() {
@@ -2580,7 +2610,7 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
     plan: new Map(),        // 配方 key → 份數
     decisions: new Map(),   // 材料編號 → "craft" | "buy"
     expanded: new Set(),
-    materials: { nodes: [], final: [] },
+    materials: { roots: [], cook: [], raw: [] },
     rows: []
   };
 
@@ -2596,6 +2626,9 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
       for (const [id, value] of Object.entries(stored.decisions)) cooking.decisions.set(id, value);
     }
   })();
+
+  /** 材料的取得方式，預設自製；使用者切過才會記錄成 buy。 */
+  const decisionOf = (itemId) => (cooking.decisions.get(itemId) === "buy" ? "buy" : "craft");
 
   /** 能把某個材料做出來的配方（同一產物可能有多個配方，取第一個）。 */
   const producerOf = (itemId) => {
@@ -2785,79 +2818,115 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
   }
 
 
+
   /* ------------------------------------------------------------ 料理計畫 */
 
   /**
-   * 統計已選料理的材料需求。
+   * 單位說明
    *
-   * 注意：CookingRecipe.xml 的 amount 是配方比例而非個數，因此這裡累加出來的
-   * 是相對需求量。設為「自製」的材料會再往下展開一層它自己的配方比例。
+   * CookingRecipe.xml 的 amount 是「同一鍋之內的材料比例」（526 道中 414 道合計 100），
+   * 只在該配方內部有意義；把兩層的比例相乘沒有物理意義，所以這裡不那樣算。
+   *
+   * 改以「份數」為單位遞迴展開：要做 N 份料理，每個需要自製的材料就得先做 N 份。
+   * 比例只在各自的配方內顯示，作為下鍋時的參考。
    */
-  function buildPlanMaterials() {
-    const direct = new Map();
 
-    const add = (map, source, amount, usedBy) => {
-      if (!map.has(source.id)) {
-        map.set(source.id, { id: source.id, name: source.name, total: 0, usedBy: new Set() });
+  /** 展開整棵製作樹；visiting 用來擋住資料裡可能出現的循環。 */
+  function expandRecipe(recipe, servings, visiting, sink) {
+    const children = [];
+    for (const source of recipe.essentials) {
+      const producer = producerOf(source.id);
+      const craft = Boolean(producer) && decisionOf(source.id) === "craft" && !visiting.has(producer.key);
+
+      if (craft) {
+        sink.cook(producer, servings, recipe.name);
+        const nested = expandRecipe(producer, servings, new Set(visiting).add(producer.key), sink);
+        children.push({
+          kind: "recipe",
+          id: source.id,
+          name: source.name,
+          ratio: source.amount,
+          servings: servings,
+          producer: producer,
+          children: nested
+        });
+      } else {
+        sink.raw(source, servings, recipe.name, Boolean(producer));
+        children.push({
+          kind: "raw",
+          id: source.id,
+          name: source.name,
+          ratio: source.amount,
+          servings: servings,
+          producer: producer,
+          children: []
+        });
       }
-      const row = map.get(source.id);
-      row.total += amount;
-      row.usedBy.add(usedBy);
+    }
+    return children;
+  }
+
+  function buildPlanMaterials() {
+    const cookTotals = new Map();   // 需要烹調的料理（含中間料理）
+    const rawTotals = new Map();    // 需要準備的原料
+
+    const sink = {
+      cook: (recipe, servings, forWhat) => {
+        if (!cookTotals.has(recipe.key)) {
+          cookTotals.set(recipe.key, { recipe: recipe, servings: 0, forWhat: new Set() });
+        }
+        const row = cookTotals.get(recipe.key);
+        row.servings += servings;
+        row.forWhat.add(forWhat);
+      },
+      raw: (source, servings, forWhat, craftable) => {
+        if (!rawTotals.has(source.id)) {
+          rawTotals.set(source.id, {
+            id: source.id, name: source.name, servings: 0,
+            usedBy: new Map(), craftable: craftable
+          });
+        }
+        const row = rawTotals.get(source.id);
+        row.servings += servings;
+        row.usedBy.set(forWhat, source.amount);
+      }
     };
 
+    const roots = [];
     for (const [key, servings] of cooking.plan) {
       const recipe = recipeOf(key);
       if (!recipe) continue;
-      for (const source of recipe.essentials) add(direct, source, source.amount * servings, recipe.name);
+      sink.cook(recipe, servings, "料理計畫");
+      roots.push({
+        kind: "recipe",
+        id: recipe.resultId,
+        name: recipe.name,
+        ratio: null,
+        servings: servings,
+        producer: recipe,
+        children: expandRecipe(recipe, servings, new Set([recipe.key]), sink)
+      });
     }
 
-    const finalTotals = new Map();
-    const addFinal = (source, amount, usedBy, level) => {
-      if (!finalTotals.has(source.id)) {
-        finalTotals.set(source.id, { id: source.id, name: source.name, total: 0, usedBy: new Set(), level: level });
-      }
-      const row = finalTotals.get(source.id);
-      row.total += amount;
-      row.usedBy.add(usedBy);
+    return {
+      roots: roots,
+      cook: Array.from(cookTotals.values()),
+      raw: Array.from(rawTotals.values())
     };
-
-    const nodes = Array.from(direct.values()).map((row) => {
-      const producer = producerOf(row.id);
-      const craft = Boolean(producer) && cooking.decisions.get(row.id) === "craft";
-      const children = [];
-
-      if (craft) {
-        // 產出 1 份需要一整組配方比例，因此下一層照需求量等比放大。
-        const batches = row.total / Math.max(1, producer.bundle);
-        for (const source of producer.essentials) {
-          const amount = batches * source.amount;
-          children.push({
-            id: source.id,
-            name: source.name,
-            total: amount,
-            calculation: fmtDecimal(row.total, 1) + " ÷ " + producer.bundle + " × " + source.amount +
-              " = " + fmtDecimal(amount, 1)
-          });
-          addFinal(source, amount, row.name, "下層材料");
-        }
-      } else {
-        addFinal(row, row.total, "直接取得", "直接材料");
-      }
-
-      return Object.assign({}, row, { producer: producer, craft: craft, children: children });
-    });
-
-    return { nodes: nodes, final: Array.from(finalTotals.values()) };
   }
+
+  /* -------------------------------------------------------------- 渲染 */
 
   function renderPlan() {
     const hasPlan = cooking.plan.size > 0;
     $("cooking-plan-panel").hidden = !hasPlan;
     $("cooking-material-panel").hidden = !hasPlan;
+    $("cooking-raw-panel").hidden = !hasPlan;
 
     if (!hasPlan) {
       $("cooking-decide-panel").hidden = true;
-      cooking.materials = { nodes: [], final: [] };
+      $("cooking-raw-panel").hidden = true;
+      cooking.materials = { roots: [], cook: [], raw: [] };
       renderCookingSummary();
       return;
     }
@@ -2878,8 +2947,7 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
         '<td class="num" data-label="料理經驗"><b>' + fmt(recipe.cookExp * entry.servings) + "</b>" +
         '<span class="cell-sub">單份 ' + fmt(recipe.cookExp) + "</span></td>" +
         '<td class="cell-wide" data-label="必需材料"><div class="chip-row">' +
-        recipe.essentials.map((source) =>
-          itemChip(source, " " + fmt(source.amount * entry.servings), "quiet")).join("") + "</div></td>" +
+        recipe.essentials.map((source) => itemChip(source, " " + source.amount + "%", "quiet")).join("") + "</div></td>" +
         '<td class="center" data-label="移除"><button type="button" class="btn btn--sm" data-remove="' +
         esc(recipe.key) + '" aria-label="從計畫移除 ' + esc(recipe.name) + '">✕</button></td>' +
         "</tr>";
@@ -2903,26 +2971,42 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
     cooking.materials = buildPlanMaterials();
     renderPlanDecisions();
     renderPlanTree();
+    renderRawList();
     renderCookingSummary();
   }
 
+  /** 取得方式：列出這棵樹裡所有「本身也能料理」的材料。 */
+  function craftableInPlan() {
+    const found = new Map();
+    const walk = (nodes) => {
+      for (const node of nodes) {
+        if (node.producer && node.ratio !== null) {
+          if (!found.has(node.id)) found.set(node.id, { id: node.id, name: node.name, servings: 0, producer: node.producer });
+          found.get(node.id).servings += node.servings;
+        }
+        walk(node.children);
+      }
+    };
+    walk(cooking.materials.roots);
+    return Array.from(found.values());
+  }
+
   function renderPlanDecisions() {
-    const craftable = cooking.materials.nodes.filter((node) => node.producer);
+    const craftable = craftableInPlan();
     $("cooking-decide-panel").hidden = craftable.length === 0;
     if (!craftable.length) return;
 
     $("cooking-decision-grid").innerHTML = craftable
-      .slice()
-      .sort((a, b) => b.total - a.total)
+      .sort((a, b) => b.servings - a.servings || String(a.name).localeCompare(String(b.name), "zh-Hant"))
       .map((node) => {
-        const decision = node.craft ? "craft" : "buy";
-        return '<div class="decide-card" data-craft="' + node.craft + '">' +
+        const craft = decisionOf(node.id) === "craft";
+        return '<div class="decide-card" data-craft="' + craft + '">' +
           '<button type="button" class="item-link dc-name" data-item="' + esc(node.id) + '" title="' + esc(node.name) + '">' +
           esc(node.name) + "</button>" +
-          '<span class="dc-need">' + fmtDecimal(node.total, 0) + "</span>" +
+          '<span class="dc-need">' + fmt(node.servings) + " 份</span>" +
           '<div class="segmented segmented--xs" role="group" aria-label="' + esc(node.name) + ' 取得方式">' +
-          '<button type="button" data-cook-decision="' + esc(node.id) + '" data-value="buy" aria-pressed="' + (decision === "buy") + '">取得</button>' +
-          '<button type="button" data-cook-decision="' + esc(node.id) + '" data-value="craft" aria-pressed="' + (decision === "craft") + '">自製</button>' +
+          '<button type="button" data-cook-decision="' + esc(node.id) + '" data-value="buy" aria-pressed="' + (!craft) + '">直接取得</button>' +
+          '<button type="button" data-cook-decision="' + esc(node.id) + '" data-value="craft" aria-pressed="' + craft + '">自製</button>' +
           "</div></div>";
       }).join("");
 
@@ -2933,52 +3017,66 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
     }));
   }
 
+  /** 製作樹：一路展開到原料為止。 */
   function renderPlanTree() {
-    const nodes = cooking.materials.nodes.slice().sort((a, b) => b.total - a.total);
-    const max = nodes.reduce((peak, node) => Math.max(peak, node.total), 0);
+    const rows = [];
 
-    $("plan-tree").innerHTML = nodes.map((node) => {
-      const expandable = node.children.length > 0;
-      const expanded = cooking.expanded.has(node.id);
-      const toggle = expandable
-        ? '<button type="button" class="tree-toggle" data-plan-tree="' + esc(node.id) + '" aria-expanded="' + expanded +
-          '" aria-label="展開 ' + esc(node.name) + ' 的材料">▶</button>'
-        : '<span class="tree-spacer"></span>';
+    const walk = (nodes, depth, path) => {
+      for (let i = 0; i < nodes.length; i += 1) {
+        const node = nodes[i];
+        const key = path + "/" + node.id + "-" + i;
+        const expandable = node.children.length > 0;
+        const expanded = expandable && cooking.expanded.has(key);
 
-      const method = node.craft
-        ? chip("自製（" + node.producer.actionLabel + "）", "accent")
-        : node.producer ? chip("直接取得", "quiet") : chip("只能直接取得", "quiet");
+        const toggle = expandable
+          ? '<button type="button" class="tree-toggle" aria-expanded="' + expanded +
+            '" aria-label="展開 ' + esc(node.name) + '">▶</button>'
+          : '<span class="tree-spacer"></span>';
 
-      const parent = '<tr class="tree-parent" data-craft="' + node.craft + '">' +
-        '<td data-label="材料">' + toggle +
-        '<button type="button" class="item-link cell-title" data-item="' + esc(node.id) + '">' + esc(node.name) + "</button>" +
-        (expandable ? '<span class="cell-sub">展開後 ' + node.children.length + " 項材料</span>" : "") + "</td>" +
-        '<td class="num" data-label="需求配比"><b>' + fmtDecimal(node.total, 0) + "</b>" +
-        (max > 0 ? '<span class="bar"><i style="width:' + Math.round((node.total / max) * 100) + '%"></i></span>' : "") + "</td>" +
-        '<td data-label="取得方式">' + method + "</td>" +
-        '<td class="cell-wide" data-label="用於"><div class="chip-row">' +
-        Array.from(node.usedBy).slice(0, 3).map((text) => chip(text, "quiet")).join("") +
-        (node.usedBy.size > 3 ? chip("＋" + (node.usedBy.size - 3), "quiet") : "") + "</div></td>" +
-        "</tr>";
+        const label = node.ratio === null
+          ? chip("計畫料理", "amber")
+          : node.kind === "recipe"
+            ? chip("自製（" + node.producer.actionLabel + "）", "accent")
+            : node.producer ? chip("直接取得", "quiet") : chip("原料", "quiet");
 
-      if (!expandable || !expanded) return parent;
+        rows.push('<tr class="tree-parent" data-depth="' + depth + '"' +
+          (expandable ? ' data-node="' + esc(key) + '"' : "") +
+          ' data-craft="' + (node.kind === "recipe") + '">' +
+          '<td data-label="項目" style="padding-left:calc(var(--sp-4) + ' + (depth * 22) + 'px)">' + toggle +
+          '<button type="button" class="item-link cell-title" data-item="' + esc(node.id) + '">' + esc(node.name) + "</button>" +
+          (expandable ? '<span class="cell-sub">需要 ' + node.children.length + " 項材料</span>" : "") + "</td>" +
+          '<td class="num" data-label="份數"><b>' + fmt(node.servings) + "</b> 份</td>" +
+          '<td class="num" data-label="本層佔比">' + (node.ratio === null ? "—" : node.ratio + "%") + "</td>" +
+          '<td data-label="取得方式">' + label + "</td>" +
+          "</tr>");
 
-      return parent + node.children.map((child) =>
-        '<tr class="tree-child">' +
-        '<td data-label="下層材料"><button type="button" class="item-link" data-item="' + esc(child.id) + '">' +
-        esc(child.name) + "</button></td>" +
-        '<td class="num" data-label="需求配比">' + fmtDecimal(child.total, 0) + "</td>" +
-        '<td data-label="層級">' + chip("下層材料", "quiet") + "</td>" +
-        '<td class="u-small u-muted" data-label="計算">' + esc(child.calculation) + "</td>" +
-        "</tr>").join("");
-    }).join("") || emptyRow(4, "尚未選擇料理", "請在下方配方清單勾選要製作的料理。");
+        if (expandable && expanded) walk(node.children, depth + 1, key);
+      }
+    };
+    walk(cooking.materials.roots, 0, "");
 
-    qsa("[data-plan-tree]", $("plan-tree")).forEach((button) => button.addEventListener("click", () => {
-      const id = button.dataset.planTree;
-      if (cooking.expanded.has(id)) cooking.expanded.delete(id);
-      else cooking.expanded.add(id);
-      renderPlanTree();
-    }));
+    $("plan-tree").innerHTML = rows.join("") ||
+      emptyRow(4, "尚未選擇料理", "請在下方配方清單勾選要製作的料理。");
+  }
+
+  /** 最終要準備的原料。 */
+  function renderRawList() {
+    const rows = cooking.materials.raw
+      .slice()
+      .sort((a, b) => b.servings - a.servings || String(a.name).localeCompare(String(b.name), "zh-Hant"));
+    const max = rows.reduce((peak, row) => Math.max(peak, row.servings), 0);
+
+    $("raw-rows").innerHTML = rows.map((row) =>
+      "<tr>" +
+      '<td data-label="原料"><button type="button" class="item-link cell-title" data-item="' + esc(row.id) + '">' +
+      esc(row.name) + "</button>" +
+      (row.craftable ? '<span class="cell-sub">也可以自己料理，目前設為直接取得</span>' : "") + "</td>" +
+      '<td class="num" data-label="需要份量"><b>' + fmt(row.servings) + "</b> 份" +
+      (max > 0 ? '<span class="bar"><i style="width:' + Math.round((row.servings / max) * 100) + '%"></i></span>' : "") + "</td>" +
+      '<td class="cell-wide" data-label="用於"><div class="chip-row">' +
+      Array.from(row.usedBy).slice(0, 4).map((entry) => chip(entry[0] + " " + entry[1] + "%", "quiet")).join("") +
+      (row.usedBy.size > 4 ? chip("＋" + (row.usedBy.size - 4), "quiet") : "") + "</div></td>" +
+      "</tr>").join("") || emptyRow(3, "沒有需要準備的原料", "");
   }
 
   function renderCookingSummary() {
@@ -2994,14 +3092,16 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
         servings += count;
         exp += recipe.cookExp * count;
       }
-      const crafting = cooking.materials.nodes.filter((node) => node.craft).length;
+      // 中間料理＝樹上要另外烹調、但不是使用者直接點選的那些
+      const intermediates = cooking.materials.cook.filter((row) => !cooking.plan.has(row.recipe.key));
+      const totalCook = cooking.materials.cook.reduce((sum, row) => sum + row.servings, 0);
       cells = [
         fmt(cooking.plan.size) + "</b><span>已選料理",
         fmt(servings) + "</b><span>合計份數",
         fmt(exp) + "</b><span>可得料理經驗",
-        fmt(cooking.materials.nodes.length) + "</b><span>直接材料種類",
-        fmt(crafting) + "</b><span>設為自製",
-        fmt(cooking.materials.final.length) + "</b><span>應準備材料"
+        fmt(intermediates.length) + "</b><span>需先做的中間料理",
+        fmt(totalCook) + "</b><span>總烹調次數",
+        fmt(cooking.materials.raw.length) + "</b><span>要準備的原料"
       ];
     } else {
       cells = [
@@ -3028,17 +3128,26 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
     toast("已清除料理計畫");
   });
   $("plan-craft-all").addEventListener("click", () => {
-    cooking.materials.nodes.forEach((node) => { if (node.producer) cooking.decisions.set(node.id, "craft"); });
+    craftableInPlan().forEach((node) => cooking.decisions.set(node.id, "craft"));
     renderPlan();
     persist();
   });
   $("plan-buy-all").addEventListener("click", () => {
-    cooking.materials.nodes.forEach((node) => cooking.decisions.set(node.id, "buy"));
+    craftableInPlan().forEach((node) => cooking.decisions.set(node.id, "buy"));
     renderPlan();
     persist();
   });
   $("plan-expand").addEventListener("click", () => {
-    cooking.materials.nodes.forEach((node) => { if (node.children.length) cooking.expanded.add(node.id); });
+    const walk = (nodes, path) => {
+      for (let i = 0; i < nodes.length; i += 1) {
+        const key = path + "/" + nodes[i].id + "-" + i;
+        if (nodes[i].children.length) {
+          cooking.expanded.add(key);
+          walk(nodes[i].children, key);
+        }
+      }
+    };
+    walk(cooking.materials.roots, "");
     renderPlanTree();
   });
   $("plan-collapse").addEventListener("click", () => {
@@ -3681,6 +3790,7 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
     renderProducts();
     qsa("[data-scope]", $("trade-scope")).forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.scope === trade.scope)));
     bindSortable("material-tree", trade.sortTree, renderMaterialTree);
+    bindRowToggle("material-tree", trade.expanded, renderMaterialTree);
     bindSortable("final-rows", trade.sortFinal, renderFinalList);
     recalcTrade();
 
@@ -3692,6 +3802,7 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
 
     renderMethods();
     renderRecipes();
+    bindRowToggle("plan-tree", cooking.expanded, renderPlanTree);
     renderPlan();
 
     renderMissionKpis();
