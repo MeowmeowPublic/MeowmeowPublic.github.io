@@ -417,6 +417,35 @@ tr[data-top="3"] .rank { background: var(--accent-soft); color: var(--accent-ink
 .vehicle-chip { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; line-height: 1.3; }
 .vehicle-chip small { font-size: .72rem; font-weight: 600; opacity: .78; }
 
+/* ---------- 快速清單（幫工模式） ---------- */
+.panel-head--sticky {
+  position: sticky; top: var(--topbar-h); z-index: 20;
+  background: var(--surface); margin: calc(var(--sp-5) * -1) calc(var(--sp-5) * -1) 0;
+  padding: var(--sp-5) var(--sp-5) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.btn--danger { border-color: var(--rose-line); color: var(--rose); }
+.btn--danger:hover { background: var(--rose-soft); border-color: var(--rose); }
+
+.quick-table td { padding-top: 9px; padding-bottom: 9px; }
+.quick-table tr[data-hit="true"] td { background: var(--accent-soft); }
+.quick-name { font-weight: 800; font-size: .92rem; }
+.quick-ing { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; }
+.quick-ing > span.qi {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  padding: 2px 8px; border-radius: var(--r-full);
+  background: var(--surface-3); font-size: .82rem; white-space: nowrap;
+}
+.quick-ing > span.qi b { font-variant-numeric: tabular-nums; color: var(--accent-ink); }
+.quick-ing > span.qi.is-craft { background: var(--amber-soft); }
+.pick-btn {
+  width: 30px; height: 30px; border-radius: var(--r-md); border: 1px solid var(--line);
+  display: inline-grid; place-items: center; font-weight: 800; color: var(--muted);
+  transition: background .14s ease, color .14s ease, border-color .14s ease;
+}
+.pick-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pick-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
 /* ---------- 料理配方 ---------- */
 .method-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--sp-2); }
 .method-card {
@@ -1028,13 +1057,13 @@ tr.tree-parent[data-craft="true"] td:first-child { box-shadow: inset 3px 0 0 var
         <div class="sticky-summary" id="cooking-summary" aria-live="polite"></div>
 
         <div class="panel" id="cooking-plan-panel" hidden>
-          <div class="panel-head">
+          <div class="panel-head panel-head--sticky">
             <div>
               <h2>料理計畫</h2>
               <p>勾選要製作的料理並輸入份數，下方會統計所有需要的材料。</p>
             </div>
             <div class="u-row">
-              <button class="btn btn--sm" id="plan-clear" type="button">清除全部</button>
+              <button class="btn btn--sm btn--danger" id="plan-clear" type="button">清空計畫</button>
             </div>
           </div>
           <div class="table-wrap stack">
@@ -1081,7 +1110,6 @@ tr.tree-parent[data-craft="true"] td:first-child { box-shadow: inset 3px 0 0 var
               <tbody id="plan-tree"></tbody>
             </table>
           </div>
-          <div class="note note--info" style="margin-top:var(--sp-4)"><span><code>CookingRecipe.xml</code> 的 <code>amount</code> 是<strong>配方的原始用量，不是百分比</strong>——各配方的合計本來就不同（526 道中 414 道剛好是 100，但也有合計 165 的水果拼盤與合計 75 的烤培根；單一材料的配方若是百分比就不可能出現 75）。本頁另外計算「該材料 ÷ 必需材料合計」的<strong>正規化佔比</strong>，讓每道配方都加總為 100%。「本層佔比」用的就是這個值。製作樹以<strong>份數</strong>遞迴展開：要做 N 份料理，每個設為自製的材料就得先做 N 份。XML 沒有提供每份料理實際消耗幾個材料。</span></div>
         </div>
 
         <div class="panel" id="cooking-raw-panel" hidden>
@@ -1145,13 +1173,26 @@ tr.tree-parent[data-craft="true"] td:first-child { box-shadow: inset 3px 0 0 var
               <label class="field u-grow"><span>搜尋</span>
                 <input class="input" id="cooking-search" type="search" placeholder="料理名稱或材料…" autocomplete="off">
               </label>
+              <div class="segmented" id="cooking-view" role="group" aria-label="檢視方式">
+                <button type="button" data-cookview="card" aria-pressed="true">卡片</button>
+                <button type="button" data-cookview="list" aria-pressed="false">快速清單</button>
+              </div>
+              <button class="btn btn--sm btn--primary" id="helper-mode" type="button"
+                title="切到快速清單、清掉所有篩選並把游標移到搜尋框，適合餐廳幫工邊接單邊查">幫工模式</button>
             </div>
           </div>
           <p class="u-small u-muted" id="cooking-count" style="margin-bottom:var(--sp-3)"></p>
           <div class="recipe-grid" id="recipe-grid"></div>
+          <div class="table-wrap stack" id="recipe-list-wrap" hidden>
+            <table class="quick-table">
+              <thead><tr>
+                <th>料理</th><th>方式</th><th>工具</th><th>必需材料</th><th class="center">計畫</th>
+              </tr></thead>
+              <tbody id="recipe-list"></tbody>
+            </table>
+          </div>
         </div>
 
-        <div class="note"><span>材料比例取自 <code>source/@amount</code>，品質區間取自 <code>quality_min</code>／<code>quality_max</code>，代表該材料對成品品質的影響範圍。XML 沒有提供成功率、火侯或攪拌次數等實際操作參數，因此本頁不做成功率推估。</span></div>
       </section>
 
       <!-- ============ 賽季料理 ============ -->
@@ -1469,6 +1510,7 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
             decisions: Object.fromEntries(trade.decisions)
           },
           cooking: {
+            view: cooking.view,
             plan: Object.fromEntries(cooking.plan),
             decisions: Object.fromEntries(cooking.decisions)
           },
@@ -2606,6 +2648,7 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
 
   const cooking = {
     action: "all",
+    view: "card",
     recipesByKey: new Map(COOKING.recipes.map((recipe) => [recipe.key, recipe])),
     plan: new Map(),        // 配方 key → 份數
     decisions: new Map(),   // 材料編號 → "craft" | "buy"
@@ -2625,6 +2668,7 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
     if (stored.decisions) {
       for (const [id, value] of Object.entries(stored.decisions)) cooking.decisions.set(id, value);
     }
+    if (stored.view === "list" || stored.view === "card") cooking.view = stored.view;
   })();
 
   /** 材料的取得方式，預設自製；使用者切過才會記錄成 buy。 */
@@ -2726,12 +2770,57 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
     return rows;
   }
 
+  /**
+   * 快速清單：一列一道料理，方式、工具與全部材料都排在同一列。
+   * 餐廳幫工邊接單邊查時，只要打字就能直接讀第一列，不必展開卡片。
+   */
+  function renderQuickList(rows) {
+    const query = norm($("cooking-search").value.trim());
+
+    $("recipe-list").innerHTML = rows.map((recipe, index) => {
+      const action = COOKING.actions.find((entry) => entry.name === recipe.action) || {};
+      const planned = cooking.plan.has(recipe.key);
+      const ingredients = recipe.essentials.map((source) =>
+        '<span class="qi' + (source.madeBy.length ? " is-craft" : "") + '">' +
+        esc(source.name) + "<b>" + fmtDecimal(source.share, 1) + "%</b></span>").join("");
+
+      return '<tr data-hit="' + (Boolean(query) && index === 0) + '">' +
+        '<td data-label="料理"><button type="button" class="item-link quick-name" data-item="' +
+        esc(recipe.resultId) + '">' + esc(recipe.name) + "</button>" +
+        (recipe.depth > 0 ? '<span class="cell-sub">需先做 ' + recipe.depth + " 層</span>" : "") + "</td>" +
+        '<td class="u-nowrap" data-label="方式">' + chip("Lv" + recipe.minSkill + " " + recipe.actionLabel, "accent") + "</td>" +
+        '<td class="u-small u-muted" data-label="工具">' + esc((action.tools || []).join("、")) + "</td>" +
+        '<td class="cell-wide" data-label="必需材料"><div class="quick-ing">' + ingredients + "</div></td>" +
+        '<td class="center" data-label="計畫"><button type="button" class="pick-btn" data-quickpick="' +
+        esc(recipe.key) + '" aria-pressed="' + planned + '" aria-label="' +
+        (planned ? "從計畫移除 " : "加入計畫 ") + esc(recipe.name) + '">' + (planned ? "✓" : "＋") + "</button></td>" +
+        "</tr>";
+    }).join("") || emptyRow(5, "沒有符合條件的配方", "請調整篩選或搜尋關鍵字。");
+
+    qsa("[data-quickpick]", $("recipe-list")).forEach((button) => button.addEventListener("click", () => {
+      const key = button.dataset.quickpick;
+      if (cooking.plan.has(key)) cooking.plan.delete(key);
+      else cooking.plan.set(key, cooking.plan.get(key) || 1);
+      renderRecipes();
+      renderPlan();
+      persist();
+    }));
+  }
+
   function renderRecipes() {
     const rows = filteredRecipes();
     cooking.rows = rows;
 
+    const isList = cooking.view === "list";
+    $("recipe-grid").hidden = isList;
+    $("recipe-list-wrap").hidden = !isList;
+    qsa("[data-cookview]", $("cooking-view")).forEach((button) =>
+      button.setAttribute("aria-pressed", String(button.dataset.cookview === cooking.view)));
+
     $("cooking-count").textContent = "顯示 " + fmt(rows.length) + " 道配方" +
       (cooking.action === "all" ? "" : "（" + (COOKING.actions.find((a) => a.name === cooking.action) || {}).label + "）");
+
+    if (isList) { renderQuickList(rows); return; }
 
     $("recipe-grid").innerHTML = rows.map((recipe) => {
       const total = recipe.totalAmount || 1;
@@ -3035,8 +3124,10 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
             '" aria-label="展開 ' + esc(node.name) + '">▶</button>'
           : '<span class="tree-spacer"></span>';
 
+        // 根節點是使用者選的料理，同樣要標出該用哪種方式做。
         const label = node.ratio === null
-          ? chip("計畫料理", "amber")
+          ? chip("計畫料理", "amber") +
+            chip("Lv" + node.producer.minSkill + " " + node.producer.actionLabel, "accent")
           : node.kind === "recipe"
             ? chip("自製（" + node.producer.actionLabel + "）", "accent")
             : node.producer ? chip("直接取得", "quiet") : chip("原料", "quiet");
@@ -3049,7 +3140,7 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
           (expandable ? '<span class="cell-sub">需要 ' + node.children.length + " 項材料</span>" : "") + "</td>" +
           '<td class="num" data-label="份數"><b>' + fmt(node.servings) + "</b> 份</td>" +
           '<td class="num" data-label="本層佔比">' + (node.ratio === null ? "—" : fmtDecimal(node.ratio, 1) + "%") + "</td>" +
-          '<td data-label="取得方式">' + label + "</td>" +
+          '<td data-label="取得方式"><div class="chip-row">' + label + "</div></td>" +
           "</tr>");
 
         if (expandable && expanded) walk(node.children, depth + 1, key);
@@ -3122,12 +3213,13 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
 
 
   $("plan-clear").addEventListener("click", () => {
+    const count = cooking.plan.size;
     cooking.plan.clear();
     cooking.expanded.clear();
     renderPlan();
     renderRecipes();
     persist();
-    toast("已清除料理計畫");
+    toast("已清空計畫中的 " + count + " 道料理");
   });
   $("plan-craft-all").addEventListener("click", () => {
     craftableInPlan().forEach((node) => cooking.decisions.set(node.id, "craft"));
@@ -3155,6 +3247,36 @@ const COOKING = JSON.parse("{\"actions\":[{\"name\":\"mix\",\"label\":\"混合\"
   $("plan-collapse").addEventListener("click", () => {
     cooking.expanded.clear();
     renderPlanTree();
+  });
+
+
+  qsa("[data-cookview]", $("cooking-view")).forEach((button) => button.addEventListener("click", () => {
+    cooking.view = button.dataset.cookview;
+    renderRecipes();
+    persist();
+  }));
+
+  /** 幫工模式：切到快速清單、清掉所有篩選，游標直接落在搜尋框。 */
+  $("helper-mode").addEventListener("click", () => {
+    cooking.view = "list";
+    cooking.action = "all";
+    $("cooking-search").value = "";
+    $("cooking-depth").value = "all";
+    $("cooking-version").value = "normal";
+    $("cooking-sort").value = "skill";
+    renderMethods();
+    renderRecipes();
+    persist();
+    $("cooking-search").focus();
+    toast("幫工模式：直接打字搜尋，第一列就是結果");
+  });
+
+  // 在料理頁按 Esc 清空搜尋，接下一單時不用手動刪字
+  $("cooking-search").addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.stopPropagation();
+    $("cooking-search").value = "";
+    renderRecipes();
   });
 
   ["cooking-version", "cooking-depth", "cooking-sort"].forEach((id) =>
