@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>輿圖天賦樹（中文版）</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <nav><a href="index.html" class=on>輿圖天賦樹（中文版）</a> <a href="https://hypostasis.faith/atlas/data.html" target="_blank" rel="noopener">原站（英文）</a></nav>
+  <div class="search">
+    <input id="q" type="search" placeholder="搜尋節點（中英文皆可）" autocomplete="off" title="輸入節點名稱或效果中的字詞。Enter：下一個符合項目，Esc：清除">
+    <span id="hits"></span>
+  </div>
+  <div class="zoom">
+    <button id="out" title="縮小">&minus;</button>
+    <span id="pct"></span>
+    <button id="in" title="放大">+</button>
+    <button id="fit" title="將天賦樹縮放至符合畫面">符合畫面</button>
+    <button id="bg" title="顯示／隱藏背景 (B)">背景</button>
+    <button id="toggle" title="顯示／隱藏已選面板">已選 <span id="badge">0</span></button>
+  </div>
+</header>
+<canvas id="c"></canvas>
+<aside id="panel">
+  <div class="ph">
+    <span id="count"></span>
+    <button id="clear">清除</button>
+  </div>
+  <p id="notice" hidden></p>
+  <p id="empty">點擊天賦樹上的節點即可選取（最多 <span id="max"></span> 點），效果會在這裡加總。有多個選項的節點會詢問你要選哪一個。</p>
+  <h3>效果</h3>
+  <ul id="effects"></ul>
+  <h3>節點</h3>
+  <ul id="picked"></ul>
+</aside>
+<div id="tip"></div>
+<div id="menu"></div>
+<script src="trees/data.js"></script>
+<script src="share.js"></script>
+<script src="viewer.js"></script>
+</body>
+</html>
